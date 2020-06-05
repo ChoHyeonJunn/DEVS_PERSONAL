@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="member">
+
+	<select id="tagsSearchAutoComplete" parameterType="map" resultType="FeedVo">
+      select * 
+      from board b, tag t
+      where b.board_code = t.board_code
+      and (t.tag_hash like '%'||#{tag_hash}||'%')
+   </select>
+
+   <select id="emailCheck" parameterType="MemberVo" resultType="int">
+      select count(*)
+      from MEMBER
+      where MEMBER_EMAIL = #{member_email}
+   </select>
+   
+   <select id="selectMemberProfile" parameterType="int" resultType="MemberProfileVo">
+      select * 
+      from MEMBER_PROFILE
+      where MEMBER_CODE = #{member_code}
+   </select>
+   
+   <insert id="insertProfile" parameterType="MemberProfileVo">
+      insert into MEMBER_PROFILE (MEMBER_CODE) 
+      VALUES(#{member_code})
+   </insert>
+   
+   <insert id="createPChannel" parameterType="MemberVo">
+      insert into CHANNEL VALUES(CHANNEL_CODE_SEQ.NEXTVAL, #{member_code}, 'P', '', '', '', '', '', 'N', '' )
+   </insert>
+   
+   <update id="updateMemberProfileImage" parameterType="MemberProfileVo">
+      UPDATE MEMBER_PROFILE
+      SET MEMBER_IMG_ORIGINAL_NAME =#{member_img_original_name},
+      MEMBER_IMG_SERVER_NAME =#{member_img_server_name},
+      MEMBER_IMG_PATH =#{member_img_path}
+      WHERE MEMBER_CODE =#{member_code}
+   </update>
+   
+   <update id="updateMemberProfile" parameterType="MemberProfileVo">
+   	  UPDATE MEMBER_PROFILE
+   	  SET MEMBER_WEBSITE =#{member_website},
+   	  MEMBER_INTRODUCE =#{member_introduce},
+   	  MEMBER_GENDER =#{member_gender}
+   	  WHERE MEMBER_CODE =#{member_code}
+   </update>
+   
+   <update id="updateMember" parameterType="MemberVo">
+   	  UPDATE MEMBER
+   	  SET MEMBER_NAME = #{member_name},
+   	  MEMBER_EMAIL = #{member_email}
+   	  WHERE MEMBER_CODE = #{member_code}
+   </update>
+   
+   <select id="nameSearchAutoComplete" parameterType="map" resultType="MemberJoinProfileVo">
+      select * 
+      from MEMBER m, MEMBER_PROFILE mp
+      where m.member_code = mp.member_code
+      and (m.member_id like '%${member_id}%' 
+            or m.member_name like '%${member_id}%')
+      and m.member_code != #{member_code}
+   </select>
+   
+   <select id="selectMemberList" parameterType="map" resultType="MemberJoinProfileSimpleVo">
+      select *
+      from MEMBER m, MEMBER_PROFILE mp
+      where m.member_code = mp.member_code
+      
+      <choose>
+            <when test="codeList.size != 0">
+                and m.member_code 
+                <foreach collection="codeList" item="item" index="index" separator="," open="in (" close=")">
+                    #{item}
+                </foreach>
+            </when>
+        </choose>
+   </select>
+   
+   <select id="findChannelCode" parameterType="int" resultType="int">
+		select CHANNEL_CODE from CHANNEL where MEMBER_CODE = #{member_code} and CHANNEL_TYPE='P'
+	</select>
+	
+	<select id="searchProfile" parameterType="String" resultType="MemberProfileVo">
+   		select * 
+   		from member 
+			join member_profile USING (member_code)
+			join channel USING (member_code)
+		WHERE CHANNEL_TYPE ='P' 
+		AND member_id = #{keyword}
+	</select>
+	
+	<select id="searchBoard_Count" parameterType="String" resultType="int">
+   	select count(*) AS board_count
+   	from board
+   	where channel_code =
+   						(select channel_code 
+   						from channel 
+   						where channel_type = 'P' 
+   						AND member_code = 
+   										(select member_code 
+   										from member 
+   										where member_id =#{keyword})
+   						)
+   </select>
+   
+   <select id="searchFollow_Count" parameterType="String" resultType="int">
+   		select count(*) AS follow_count 
+   		from follow 
+   		where member_code =
+   							(select member_code 
+   							from member 
+   							where member_id =#{keyword}
+   							)
+   </select>
+   
+   <select id="searchFollowers_Count" parameterType="String" resultType="int">
+   		select count(*) AS follower_count 
+   		from follow 
+   		where channel_code =
+   							(select channel_code 
+   							from channel 
+   							WHERE CHANNEL_TYPE = 'P' 
+   							AND member_code =
+   											(select member_code 
+   											from member 
+   											where member_id =#{keyword}
+   											)
+   							)
+   </select>
+   
+	<insert id="follow" parameterType="MemberProfileVo">
+		insert into follow
+		values (#{member_code},
+		(select channel_code
+		from channel c, member m
+		where c.member_code =
+		m.member_code
+		and m.member_id=#{member_id}))
+	</insert>
+	
+	<delete id="unfollow" parameterType="int">
+		delete from follow
+		where member_code = #{member_code} and channel_code = #{channel_code}
+	</delete>
+	
+	<select id="followCheck" parameterType="MemberProfileVo" resultType="int">
+		select count(*) from follow
+		where member_code =#{member_code} and channel_code =#{channel_code}
+	</select>
+	
+	<select id="followerList" resultType="MemberProfileVo">
+      select member_id, member_img_server_name
+      from member m, member_profile p
+      where m.member_code = p.member_code
+      and m.member_code in 
+                     (select member_code 
+                     from follow 
+                     where channel_code in 
+                                    (select channel_code 
+                                    from channel 
+                                    where member_code = #{member_code}))
+   </select>
+   
+   <select id="followList" resultType="MemberProfileVo">
+      select m.member_id, p.member_img_server_name
+      from member m, member_profile p
+      where m.member_code = p.member_code
+      and m.member_code in
+                     (select member_code
+                     from channel
+                     where channel_code in
+                                    (select channel_code 
+                                    from follow 
+                                    where member_code =#{member_code}))
+   </select>
+   
+   
+</mapper>

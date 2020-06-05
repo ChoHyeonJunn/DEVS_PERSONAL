@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="feed">
+
+	<insert id="insertFeed" parameterType="FeedVo">
+		
+		INSERT INTO BOARD VALUES (BOARD_CODE_SEQ.NEXTVAL,#{member_code}, #{channel_code}, #{board_content}, 
+		#{board_file_original_name}, #{board_file_server_name}, #{board_file_path},SYSDATE,0,#{board_file_ext})
+	</insert>
+	
+	<select id="selectLatestFeed" parameterType="int" resultType="FeedVo">
+      SELECT BOARD_CODE
+      FROM (SELECT A.BOARD_CODE, ROWNUM AS R
+           FROM (SELECT *
+               FROM BOARD
+               WHERE MEMBER_CODE = #{member_code }
+               ORDER BY BOARD_CODE DESC) A
+          ) B
+      WHERE B.R = 1
+   </select>
+	
+	<select id="myFeedList" parameterType="int" resultType="FeedVo">
+		SELECT * FROM BOARD WHERE channel_code=#{channel_code} ORDER BY board_code DESC
+	</select>
+
+	<select id="selectFeed" parameterType="int" resultType="FeedVo">
+		SELECT A.*, M.MEMBER_ID , P.MEMBER_IMG_SERVER_NAME  
+		FROM (SELECT * FROM BOARD WHERE BOARD_CODE = #{board_code})A, MEMBER M, MEMBER_PROFILE P
+		WHERE A.MEMBER_CODE = M.MEMBER_CODE AND M.MEMBER_CODE = P.MEMBER_CODE
+	</select>
+	
+	<insert id="insertReply" parameterType="FeedVo">
+		<selectKey keyProperty="reply_code" resultType="int" order="AFTER">
+			select reply_code_seq.currval as reply_code from dual
+		</selectKey>
+		INSERT INTO REPLY VALUES (
+			REPLY_CODE_SEQ.NEXTVAL, #{board_code}, #{member_code}, #{reply_content}, 0, SYSDATE
+		)
+	</insert>
+	
+	<select id="allReply" parameterType="int" resultType="FeedVo">
+		SELECT R.*, P.MEMBER_IMG_SERVER_NAME, M.MEMBER_ID 
+		FROM REPLY R, MEMBER_PROFILE P, MEMBER M 
+		WHERE R.MEMBER_CODE = P.MEMBER_CODE AND P.MEMBER_CODE=M.MEMBER_CODE AND 
+		R.BOARD_CODE=#{board_code} 
+		ORDER BY R.REPLY_REGDATE
+	</select>
+	
+	<select id="insertReplyView" parameterType="int" resultType="FeedVo">
+		SELECT * FROM REPLY WHERE REPLY_CODE=#{reply_code}
+	</select>
+	
+	<select id="allFollowingFeed" parameterType="map" resultType="FeedVo">
+		SELECT B.* FROM 
+			(SELECT A.*, ROWNUM AS RNUM FROM
+				(SELECT B.*, P.MEMBER_IMG_SERVER_NAME, M.MEMBER_ID
+				FROM BOARD B, MEMBER_PROFILE P, MEMBER M 
+				WHERE B.MEMBER_CODE = P.MEMBER_CODE AND 
+					P.MEMBER_CODE = M.MEMBER_CODE 
+				AND B.CHANNEL_CODE IN (
+						SELECT CHANNEL_CODE FROM FOLLOW WHERE MEMBER_CODE=#{member_code})
+				ORDER BY B.BOARD_REGDATE DESC)A)B
+		WHERE B.RNUM BETWEEN #{start_no} AND #{last_no}
+	</select>
+	
+	<select id="isThisFeedLiked" parameterType="Map" resultType="int">
+		SELECT COUNT(*) FROM BOARD_LIKE WHERE MEMBER_CODE = #{member_code} AND BOARD_CODE=#{board_code} 
+	</select>
+	
+	<insert id="like" parameterType="Map">
+		INSERT INTO BOARD_LIKE VALUES(#{member_code}, #{board_code})
+	</insert>
+	
+	<update id="likeCountUpdate" parameterType="int">
+		UPDATE BOARD SET BOARD_LIKE_COUNT = BOARD_LIKE_COUNT+1 WHERE BOARD_CODE=#{board_code}
+	</update>
+	
+	<delete id="unlike" parameterType="Map">
+		DELETE FROM BOARD_LIKE WHERE MEMBER_CODE = #{member_code} AND BOARD_CODE = #{board_code}
+	</delete>
+	
+	<update id="unlikeCountUpdate" parameterType="int">
+		UPDATE BOARD SET BOARD_LIKE_COUNT = BOARD_LIKE_COUNT-1 WHERE BOARD_CODE=#{board_code}
+	</update>
+	
+	<delete id="deleteReply" parameterType="int">
+		DELETE FROM REPLY WHERE REPLY_CODE = #{reply_code}
+	</delete>
+	
+	<select id="feedListReply" parameterType="int" resultType="FeedVo">
+		SELECT A.* FROM (
+				SELECT R.*, P.MEMBER_IMG_SERVER_NAME, M.MEMBER_ID 
+				FROM REPLY R, MEMBER_PROFILE P, MEMBER M 
+				WHERE R.MEMBER_CODE = P.MEMBER_CODE AND P.MEMBER_CODE=M.MEMBER_CODE AND 
+				R.BOARD_CODE=#{board_code}   
+				ORDER BY R.REPLY_REGDATE DESC)A
+		WHERE ROWNUM = 1
+	</select>
+	
+	<delete id="deleteFeed">
+   		DELETE FROM BOARD WHERE BOARD_CODE = #{board_code}
+   </delete>
+	
+	<select id="randomFeedList" resultType="FeedVo">
+      SELECT * FROM
+       ( SELECT * FROM 
+       BOARD ORDER BY dbms_random.value ) 
+       WHERE rownum BETWEEN 1 AND 60 
+       AND MEMBER_CODE !=#{member_code}
+   </select>
+   
+   <update id="updateFeed" parameterType="FeedVo">
+   		UPDATE BOARD SET BOARD_CONTENT = #{board_content}, 
+   		BOARD_FILE_ORIGINAL_NAME = #{board_file_original_name}, 
+   		BOARD_FILE_SERVER_NAME = #{board_file_server_name},
+   		BOARD_FILE_PATH = #{board_file_path},
+   		BOARD_FILE_EXT = #{board_file_ext}  
+   		WHERE BOARD_CODE = #{board_code}
+   </update>
+   
+   <insert id="insertHashtag" parameterType="Map">
+      INSERT INTO TAG (TAG_CODE, BOARD_CODE, TAG_HASH)
+      
+      SELECT TAG_CODE_SEQ.NEXTVAL, A.* 
+      FROM(
+          <foreach collection="tagList" item="tag" separator="UNION ALL ">
+             SELECT 
+                #{tag.board_code} as BOARD_CODE,
+                #{tag.tag_hash} as TAG_HASH   
+             FROM DUAL
+          </foreach>
+      ) A
+   </insert>   
+   
+   
+   
+   <select id="tagBoardList" parameterType="Map" resultType="FeedVo">
+   	  select * 
+      from board b, tag t
+      where b.board_code = t.board_code
+      and t.tag_hash like '%'||#{hashtag}||'%'
+      order by b.board_code desc
+   </select>
+   
+   <delete id="deletetag" parameterType="int">
+   	DELETE FROM TAG WHERE BOARD_CODE = #{board_code}
+   </delete>
+   
+   <select id="likeFeedList" parameterType="list" resultType="FeedVo">
+      select B.* from 
+         (select a.*, rownum as rnum from
+            (select b.*, p.member_img_server_name, m.member_id 
+            from board b, member_profile p, member m 
+            where b.member_code = p.member_code and p.member_code = m.member_code 
+            and board_code in (
+            select board_code from board_like where member_code =#{member_code})
+            order by b.board_regdate desc)a)b
+         where b.rnum between #{start_no} and #{last_no}
+   </select>
+   
+</mapper>
